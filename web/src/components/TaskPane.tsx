@@ -1,26 +1,23 @@
-import { useState } from "react";
-import { EventType, type AgentEvent, type ClientMessage } from "@shared/events";
-import {
-  ChatContainerContent,
-  ChatContainerRoot,
-} from "@/components/ui/chat-container";
-import { Markdown } from "@/components/ui/markdown";
-import { Tool, type ToolPart } from "@/components/ui/tool";
+import { useState } from 'react';
+import { EventType, type AgentEvent, type ClientMessage } from '@shared/events';
+import { ChatContainerContent, ChatContainerRoot } from '@/components/ui/chat-container';
+import { Markdown } from '@/components/ui/markdown';
+import { Tool, type ToolPart } from '@/components/ui/tool';
 import {
   ChainOfThought,
   ChainOfThoughtContent,
   ChainOfThoughtItem,
   ChainOfThoughtStep,
   ChainOfThoughtTrigger,
-} from "@/components/ui/chain-of-thought";
+} from '@/components/ui/chain-of-thought';
 import {
   PromptInput,
   PromptInputAction,
   PromptInputActions,
   PromptInputTextarea,
-} from "@/components/ui/prompt-input";
-import { Button } from "@/components/ui/button";
-import { TextDotsLoader } from "@/components/ui/loader";
+} from '@/components/ui/prompt-input';
+import { Button } from '@/components/ui/button';
+import { TextDotsLoader } from '@/components/ui/loader';
 import {
   ArrowUp,
   Circle,
@@ -30,12 +27,12 @@ import {
   Loader2,
   Network,
   ShieldAlert,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // The left pane is a PROJECTION of the harness event stream. It never talks to
 // the model — it renders whatever events have arrived so far.
-type SubagentState = "pending" | "started" | "completed" | "failed";
+type SubagentState = 'pending' | 'started' | 'completed' | 'failed';
 type Subagent = {
   stepId: string;
   agent: string;
@@ -45,27 +42,27 @@ type Subagent = {
 };
 
 type Turn =
-  | { id: string; role: "user"; text: string }
-  | { id: string; role: "assistant"; text: string }
-  | { id: string; role: "tool"; part: ToolPart }
-  | { id: string; role: "handoff"; from: string; to: string; reason: string }
-  | { id: string; role: "supervision"; subagents: Subagent[] }
+  | { id: string; role: 'user'; text: string }
+  | { id: string; role: 'assistant'; text: string }
+  | { id: string; role: 'tool'; part: ToolPart }
+  | { id: string; role: 'handoff'; from: string; to: string; reason: string }
+  | { id: string; role: 'supervision'; subagents: Subagent[] }
   | {
       id: string;
-      role: "approval";
+      role: 'approval';
       workflowId: string;
       action: string;
       args: unknown;
-      state: "pending" | "approved" | "rejected";
+      state: 'pending' | 'approved' | 'rejected';
     }
-  | { id: string; role: "log"; level: string; text: string };
+  | { id: string; role: 'log'; level: string; text: string };
 
 function toTranscript(events: AgentEvent[]): { turns: Turn[]; running: boolean } {
   const turns: Turn[] = [];
-  let assistant: Extract<Turn, { role: "assistant" }> | null = null;
-  let supervision: Extract<Turn, { role: "supervision" }> | null = null;
-  const toolsById = new Map<string, Extract<Turn, { role: "tool" }>>();
-  const approvalsById = new Map<string, Extract<Turn, { role: "approval" }>>();
+  let assistant: Extract<Turn, { role: 'assistant' }> | null = null;
+  let supervision: Extract<Turn, { role: 'supervision' }> | null = null;
+  const toolsById = new Map<string, Extract<Turn, { role: 'tool' }>>();
+  const approvalsById = new Map<string, Extract<Turn, { role: 'approval' }>>();
   let open = 0;
 
   const sub = (stepId: string) => supervision?.subagents.find((s) => s.stepId === stepId);
@@ -75,7 +72,7 @@ function toTranscript(events: AgentEvent[]): { turns: Turn[]; running: boolean }
       case EventType.WorkflowStarted:
         open++;
         assistant = null;
-        turns.push({ id: ev.id, role: "user", text: ev.input });
+        turns.push({ id: ev.id, role: 'user', text: ev.input });
         break;
       case EventType.WorkflowCompleted:
       case EventType.WorkflowFailed:
@@ -84,23 +81,23 @@ function toTranscript(events: AgentEvent[]): { turns: Turn[]; running: boolean }
         break;
       case EventType.ModelDelta:
         if (!assistant) {
-          assistant = { id: ev.id, role: "assistant", text: "" };
+          assistant = { id: ev.id, role: 'assistant', text: '' };
           turns.push(assistant);
         }
         assistant.text += ev.text;
         break;
       case EventType.ModelCompleted:
         if (assistant) assistant.text = ev.text;
-        else turns.push({ id: ev.id, role: "assistant", text: ev.text });
+        else turns.push({ id: ev.id, role: 'assistant', text: ev.text });
         assistant = null;
         break;
       case EventType.ToolRequested: {
-        const turn: Extract<Turn, { role: "tool" }> = {
+        const turn: Extract<Turn, { role: 'tool' }> = {
           id: ev.id,
-          role: "tool",
+          role: 'tool',
           part: {
             type: ev.name,
-            state: "input-available",
+            state: 'input-available',
             input: ev.args as Record<string, unknown>,
             toolCallId: ev.toolCallId,
           },
@@ -115,7 +112,7 @@ function toTranscript(events: AgentEvent[]): { turns: Turn[]; running: boolean }
         if (turn) {
           turn.part = {
             ...turn.part,
-            state: "output-available",
+            state: 'output-available',
             output: ev.result as Record<string, unknown>,
           };
         }
@@ -123,37 +120,37 @@ function toTranscript(events: AgentEvent[]): { turns: Turn[]; running: boolean }
       }
       case EventType.ToolFailed: {
         const turn = toolsById.get(ev.toolCallId);
-        if (turn) turn.part = { ...turn.part, state: "output-error", errorText: ev.error };
+        if (turn) turn.part = { ...turn.part, state: 'output-error', errorText: ev.error };
         break;
       }
       case EventType.AgentHandoff:
         assistant = null;
-        turns.push({ id: ev.id, role: "handoff", from: ev.from, to: ev.to, reason: ev.reason });
+        turns.push({ id: ev.id, role: 'handoff', from: ev.from, to: ev.to, reason: ev.reason });
         break;
       case EventType.PlanCreated:
         assistant = null;
         supervision = {
           id: ev.id,
-          role: "supervision",
+          role: 'supervision',
           subagents: ev.steps.map((s) => ({
             stepId: s.id,
             agent: s.agent,
             objective: s.objective,
-            state: "pending",
-            findings: "",
+            state: 'pending',
+            findings: '',
           })),
         };
         turns.push(supervision);
         break;
       case EventType.SubagentStarted: {
         const s = sub(ev.stepId);
-        if (s) s.state = "started";
+        if (s) s.state = 'started';
         break;
       }
       case EventType.SubagentCompleted: {
         const s = sub(ev.stepId);
         if (s) {
-          s.state = "completed";
+          s.state = 'completed';
           s.findings = ev.findings;
         }
         break;
@@ -161,20 +158,20 @@ function toTranscript(events: AgentEvent[]): { turns: Turn[]; running: boolean }
       case EventType.SubagentFailed: {
         const s = sub(ev.stepId);
         if (s) {
-          s.state = "failed";
+          s.state = 'failed';
           s.findings = ev.error;
         }
         break;
       }
       case EventType.ApprovalRequested: {
         assistant = null;
-        const turn: Extract<Turn, { role: "approval" }> = {
+        const turn: Extract<Turn, { role: 'approval' }> = {
           id: ev.id,
-          role: "approval",
+          role: 'approval',
           workflowId: ev.workflowId,
           action: ev.action,
           args: ev.args,
-          state: "pending",
+          state: 'pending',
         };
         approvalsById.set(ev.toolCallId, turn);
         turns.push(turn);
@@ -182,11 +179,11 @@ function toTranscript(events: AgentEvent[]): { turns: Turn[]; running: boolean }
       }
       case EventType.ApprovalResolved: {
         const turn = approvalsById.get(ev.toolCallId);
-        if (turn) turn.state = ev.approved ? "approved" : "rejected";
+        if (turn) turn.state = ev.approved ? 'approved' : 'rejected';
         break;
       }
       case EventType.Log:
-        turns.push({ id: ev.id, role: "log", level: ev.level, text: ev.message });
+        turns.push({ id: ev.id, role: 'log', level: ev.level, text: ev.message });
         break;
     }
   }
@@ -201,20 +198,20 @@ export function TaskPane({
   events: AgentEvent[];
   send: (message: ClientMessage) => void;
 }) {
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState('');
   const [supervised, setSupervised] = useState(false);
   const { turns, running } = toTranscript(events);
 
   function submit() {
     const text = input.trim();
     if (!text) return;
-    send({ type: "submit_task", input: text, mode: supervised ? "supervised" : "default" });
-    setInput("");
+    send({ type: 'submit_task', input: text, mode: supervised ? 'supervised' : 'default' });
+    setInput('');
   }
 
   async function clearMemory() {
     // The route is wired up in the memory lesson; degrade gracefully before then.
-    await fetch(`http://${location.hostname}:8787/api/clear`, { method: "POST" }).catch(() => {});
+    await fetch(`http://${location.hostname}:8787/api/clear`, { method: 'POST' }).catch(() => {});
     location.reload(); // simplest reset: reconnect and replay the now-empty log
   }
 
@@ -257,7 +254,7 @@ export function TaskPane({
           <PromptInputActions className="flex items-center justify-between pt-2">
             <Button
               type="button"
-              variant={supervised ? "default" : "outline"}
+              variant={supervised ? 'default' : 'outline'}
               size="sm"
               className="h-8 gap-1.5 rounded-full text-xs"
               onClick={() => setSupervised((s) => !s)}
@@ -281,20 +278,20 @@ export function TaskPane({
   );
 }
 
-const PROSE = "prose prose-sm dark:prose-invert max-w-none";
+const PROSE = 'prose prose-sm dark:prose-invert max-w-none';
 
-function ApprovalCard({ turn }: { turn: Extract<Turn, { role: "approval" }> }) {
+function ApprovalCard({ turn }: { turn: Extract<Turn, { role: 'approval' }> }) {
   function decide(approved: boolean) {
     fetch(`http://${location.hostname}:8787/api/approve/${turn.workflowId}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ approved }),
     }).catch(() => {});
   }
 
   const args = turn.args as Record<string, unknown> | null;
   const summary =
-    turn.action === "issueRefund" && args
+    turn.action === 'issueRefund' && args
       ? `Refund $${((Number(args.amountCents) || 0) / 100).toFixed(2)} to ${String(args.customerId)} (charge ${String(args.chargeId)})`
       : JSON.stringify(turn.args);
 
@@ -305,7 +302,7 @@ function ApprovalCard({ turn }: { turn: Extract<Turn, { role: "approval" }> }) {
         <span className="text-muted-foreground font-mono text-xs">{turn.action}</span>
       </div>
       <p className="text-muted-foreground mb-3 text-sm">{summary}</p>
-      {turn.state === "pending" ? (
+      {turn.state === 'pending' ? (
         <div className="flex gap-2">
           <Button size="sm" onClick={() => decide(true)}>
             Approve
@@ -317,11 +314,11 @@ function ApprovalCard({ turn }: { turn: Extract<Turn, { role: "approval" }> }) {
       ) : (
         <div
           className={cn(
-            "text-sm font-medium",
-            turn.state === "approved" ? "text-emerald-600" : "text-destructive",
+            'text-sm font-medium',
+            turn.state === 'approved' ? 'text-emerald-600' : 'text-destructive',
           )}
         >
-          {turn.state === "approved" ? "✓ Approved" : "✗ Rejected"}
+          {turn.state === 'approved' ? '✓ Approved' : '✗ Rejected'}
         </div>
       )}
     </div>
@@ -330,27 +327,27 @@ function ApprovalCard({ turn }: { turn: Extract<Turn, { role: "approval" }> }) {
 
 function subagentIcon(state: SubagentState) {
   switch (state) {
-    case "pending":
+    case 'pending':
       return <Circle className="text-muted-foreground/40 size-4" />;
-    case "started":
+    case 'started':
       return <Loader2 className="size-4 animate-spin text-sky-500" />;
-    case "completed":
+    case 'completed':
       return <CircleCheck className="size-4 text-emerald-500" />;
-    case "failed":
+    case 'failed':
       return <CircleX className="text-destructive size-4" />;
   }
 }
 
 const SUBAGENT_LABEL: Record<SubagentState, string> = {
-  pending: "queued",
-  started: "investigating…",
-  completed: "done",
-  failed: "failed",
+  pending: 'queued',
+  started: 'investigating…',
+  completed: 'done',
+  failed: 'failed',
 };
 
 function TurnView({ turn }: { turn: Turn }) {
   switch (turn.role) {
-    case "user":
+    case 'user':
       return (
         <div className="flex justify-end">
           <div className="bg-primary text-primary-foreground max-w-[85%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap">
@@ -358,11 +355,11 @@ function TurnView({ turn }: { turn: Turn }) {
           </div>
         </div>
       );
-    case "assistant":
+    case 'assistant':
       return <Markdown className={PROSE}>{turn.text}</Markdown>;
-    case "tool":
+    case 'tool':
       return <Tool toolPart={turn.part} />;
-    case "supervision":
+    case 'supervision':
       return (
         <div className="space-y-2">
           <div className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
@@ -377,13 +374,15 @@ function TurnView({ turn }: { turn: Turn }) {
                 </ChainOfThoughtTrigger>
                 <ChainOfThoughtContent>
                   <ChainOfThoughtItem className="italic">{s.objective}</ChainOfThoughtItem>
-                  {s.state === "completed" && s.findings && (
+                  {s.state === 'completed' && s.findings && (
                     <ChainOfThoughtItem className="text-foreground">
                       <Markdown className={PROSE}>{s.findings}</Markdown>
                     </ChainOfThoughtItem>
                   )}
-                  {s.state === "failed" && (
-                    <ChainOfThoughtItem className="text-destructive">{s.findings}</ChainOfThoughtItem>
+                  {s.state === 'failed' && (
+                    <ChainOfThoughtItem className="text-destructive">
+                      {s.findings}
+                    </ChainOfThoughtItem>
                   )}
                 </ChainOfThoughtContent>
               </ChainOfThoughtStep>
@@ -391,29 +390,29 @@ function TurnView({ turn }: { turn: Turn }) {
           </ChainOfThought>
         </div>
       );
-    case "approval":
+    case 'approval':
       return <ApprovalCard turn={turn} />;
-    case "handoff":
+    case 'handoff':
       return (
         <div className="text-muted-foreground flex items-center gap-2 py-1 text-xs">
           <div className="bg-border h-px flex-1" />
           <span className="shrink-0">
-            ↪ handed off <span className="font-medium">{turn.from}</span> →{" "}
+            ↪ handed off <span className="font-medium">{turn.from}</span> →{' '}
             <span className="text-foreground font-medium">{turn.to}</span>
           </span>
           <div className="bg-border h-px flex-1" />
         </div>
       );
-    case "log":
+    case 'log':
       return (
         <p
           className={cn(
-            "px-1 text-xs",
-            turn.level === "error"
-              ? "text-destructive"
-              : turn.level === "warn"
-                ? "text-amber-600"
-                : "text-muted-foreground",
+            'px-1 text-xs',
+            turn.level === 'error'
+              ? 'text-destructive'
+              : turn.level === 'warn'
+                ? 'text-amber-600'
+                : 'text-muted-foreground',
           )}
         >
           {turn.text}
