@@ -1,23 +1,22 @@
-import { config } from "dotenv";
-// Load secrets from .dev.vars (OPENAI_API_KEY, ...) before anything else.
-config({ path: ".dev.vars" });
+import { config } from 'dotenv';
+import express from 'express';
+import { createServer } from 'node:http';
+import { WebSocketServer, type WebSocket } from 'ws';
+import { EventBus, createEmitter } from './bus';
+import { runAgent } from '../harness/runtime';
+import { EventType, type ClientMessage } from '@shared/events';
 
-import express from "express";
-import { createServer } from "node:http";
-import { WebSocketServer, type WebSocket } from "ws";
-import { EventBus, createEmitter } from "./bus";
-import { runAgent } from "../harness/runtime";
-import { EventType, type ClientMessage } from "@shared/events";
+config({ path: '.env' });
 
 const PORT = Number(process.env.PORT ?? 8787);
 
 const app = express();
-app.get("/health", (_req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
 const server = createServer(app);
-const wss = new WebSocketServer({ server, path: "/ws" });
+const wss = new WebSocketServer({ server, path: '/ws' });
 const bus = new EventBus();
 
 // Forward every event the harness emits to all connected inspectors.
@@ -28,11 +27,11 @@ bus.subscribe((event) => {
   }
 });
 
-wss.on("connection", (socket: WebSocket) => {
+wss.on('connection', (socket: WebSocket) => {
   // Replay the timeline so far so a fresh inspector isn't blank.
   for (const event of bus.history()) socket.send(JSON.stringify(event));
 
-  socket.on("message", (raw) => {
+  socket.on('message', (raw) => {
     let message: ClientMessage;
     try {
       message = JSON.parse(raw.toString());
@@ -40,11 +39,11 @@ wss.on("connection", (socket: WebSocket) => {
       return; // ignore anything that isn't valid JSON
     }
 
-    if (message.type === "submit_task") {
+    if (message.type === 'submit_task') {
       const emit = createEmitter(bus);
       // Fire and forget — the agent reports everything via events, not a return value.
       runAgent({ input: message.input, emit }).catch((error) => {
-        emit({ type: EventType.Log, level: "error", message: String(error) });
+        emit({ type: EventType.Log, level: 'error', message: String(error) });
       });
     }
   });

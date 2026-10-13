@@ -1,0 +1,21 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": true,
+  "quoteProps": "as-needed",
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "always",
+  "endOfLine": "lf",
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/.turbo/**",
+    "pnpm-lock.yaml",
+    ".agents/**",
+    ".claude/**",
+    "apps/web/src/app/routeTree.gen.ts"
+  ]
+}

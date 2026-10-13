@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import type { AgentEvent, EventInput, Emit } from "@shared/events";
+import { randomUUID } from 'node:crypto';
+import type { AgentEvent, EventInput, Emit } from '@shared/events';
 
 type Listener = (event: AgentEvent) => void;
 
