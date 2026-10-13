@@ -8,9 +8,9 @@
       // Apply the saved (or system) theme before first paint — no flash.
       (function () {
         try {
-          var t = localStorage.getItem("theme");
-          if (t === "dark" || (!t && matchMedia("(prefers-color-scheme: dark)").matches)) {
-            document.documentElement.classList.add("dark");
+          var t = localStorage.getItem('theme');
+          if (t === 'dark' || (!t && matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
           }
         } catch (e) {}
       })();

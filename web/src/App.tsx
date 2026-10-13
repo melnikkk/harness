@@ -1,11 +1,11 @@
-import { Moon, Sun } from "lucide-react";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { useHarnessSocket } from "./useHarnessSocket";
-import { useTheme } from "./useTheme";
-import { TaskPane } from "./components/TaskPane";
-import { InspectorPane } from "./components/InspectorPane";
+import { Moon, Sun } from 'lucide-react';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { useHarnessSocket } from './useHarnessSocket';
+import { useTheme } from './useTheme';
+import { TaskPane } from './components/TaskPane';
+import { InspectorPane } from './components/InspectorPane';
 
 export function App() {
   const { events, connected, send } = useHarnessSocket();
@@ -21,17 +21,17 @@ export function App() {
           <div className="flex items-center gap-3">
             <span
               className={cn(
-                "flex items-center gap-1.5 text-xs",
-                connected ? "text-emerald-600" : "text-muted-foreground",
+                'flex items-center gap-1.5 text-xs',
+                connected ? 'text-emerald-600' : 'text-muted-foreground',
               )}
             >
               <span
                 className={cn(
-                  "size-2 rounded-full",
-                  connected ? "bg-emerald-500" : "bg-muted-foreground/50",
+                  'size-2 rounded-full',
+                  connected ? 'bg-emerald-500' : 'bg-muted-foreground/50',
                 )}
               />
-              {connected ? "connected" : "disconnected"}
+              {connected ? 'connected' : 'disconnected'}
             </span>
             <Button
               variant="ghost"
@@ -40,7 +40,7 @@ export function App() {
               onClick={toggle}
               aria-label="Toggle theme"
             >
-              {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
+              {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
             </Button>
           </div>
         </header>

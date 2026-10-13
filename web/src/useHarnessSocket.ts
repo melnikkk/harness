@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { AgentEvent, ClientMessage } from "@shared/events";
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { AgentEvent, ClientMessage } from '@shared/events';
 
 // The inspector's single source of truth: the harness event stream, received
 // over one WebSocket. We also send commands (submit_task, ...) back over it.
