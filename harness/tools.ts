@@ -8,13 +8,6 @@ export const tools = {
     inputSchema: z.object({
       query: z.string().describe('what to look up'),
     }),
-    execute: async ({ query }) => {
-      const hits = Object.entries(KNOWLEDGE_BASE)
-        .filter(([key]) => query.toLocaleLowerCase().includes(key))
-        .map(([, article]) => article);
-
-      return { articles: hits.length > 0 ? hits : ['No relevant articles found.'] };
-    },
   }),
 
   classifyItem: tool({
@@ -23,7 +16,6 @@ export const tools = {
       itemId: z.string(),
       category: z.enum(['billing', 'technical', 'sales', 'other']),
     }),
-    execute: async ({ itemId, category }) => ({ ok: true, itemId, category }),
   }),
 
   draftReply: tool({
@@ -32,7 +24,6 @@ export const tools = {
       itemId: z.string(),
       message: z.string(),
     }),
-    execute: async ({ itemId }) => ({ ok: true, draftId: `draft-${itemId}` }),
   }),
 
   sendReply: tool({
@@ -41,7 +32,33 @@ export const tools = {
       itemId: z.string(),
       draftId: z.string(),
     }),
-    // DANGEROUS: an irreversible side effect with zero confirmation.
-    execute: async ({ itemId, draftId }) => ({ sent: true, itemId, draftId }),
   }),
 };
+
+export async function runTool(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  switch (name) {
+    case 'searchKnowledgeBase': {
+      const query = String(args?.query ?? '');
+      const hits = Object.entries(KNOWLEDGE_BASE)
+        .filter(([key]) => query.toLocaleLowerCase().includes(key))
+        .map(([, article]) => article);
+
+      return { articles: hits.length ? hits : ['No relevant articles found.'] };
+    }
+    case 'classifyItem': {
+      return { ok: true, itemId: args.itemId, category: args.category };
+    }
+    case 'draftReply': {
+      return { ok: true, draftId: `draft-${args.itemId}` };
+    }
+    case 'sendReply': {
+      return { ok: true, itemId: args.itemId, draftId: args.draftId };
+    }
+    default: {
+      throw new Error(`Unknown tool: ${name}`);
+    }
+  }
+}
