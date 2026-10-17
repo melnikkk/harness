@@ -1,54 +1,67 @@
-import { config } from 'dotenv';
+import './env';
 import express from 'express';
 import { createServer } from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { EventBus, createEmitter } from './bus';
-import { runAgent } from '../harness/runtime';
-import { EventType, type ClientMessage } from '@shared/events';
-
-config({ path: '.env' });
+import { DBOS } from '@dbos-inc/dbos-sdk';
+import { type ClientMessage } from '@shared/events';
+import { subscribe, history } from '../harness/bus';
+import { runAgentWorkflow } from '../harness/runtime';
+import { ensureSchema } from '../harness/db';
 
 const PORT = Number(process.env.PORT ?? 8787);
 
-const app = express();
-app.get('/health', (_req, res) => {
-  res.json({ ok: true });
-});
+async function main() {
+  await ensureSchema();
 
-const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
-const bus = new EventBus();
+  DBOS.setConfig({
+    name: 'harness',
+    systemDatabaseUrl: process.env.DBOS_SYSTEM_DATABASE_URL,
+  });
+  await DBOS.launch();
 
-// Forward every event the harness emits to all connected inspectors.
-bus.subscribe((event) => {
-  const data = JSON.stringify(event);
-  for (const client of wss.clients) {
-    if (client.readyState === client.OPEN) client.send(data);
-  }
-});
+  const app = express();
+  app.get('/health', (_req, res) => {
+    res.json({ ok: true });
+  });
 
-wss.on('connection', (socket: WebSocket) => {
-  // Replay the timeline so far so a fresh inspector isn't blank.
-  for (const event of bus.history()) socket.send(JSON.stringify(event));
+  const server = createServer(app);
+  const wss = new WebSocketServer({ server, path: '/ws' });
 
-  socket.on('message', (raw) => {
-    let message: ClientMessage;
-    try {
-      message = JSON.parse(raw.toString());
-    } catch {
-      return; // ignore anything that isn't valid JSON
-    }
+  subscribe((event) => {
+    const data = JSON.stringify(event);
 
-    if (message.type === 'submit_task') {
-      const emit = createEmitter(bus);
-      // Fire and forget — the agent reports everything via events, not a return value.
-      runAgent({ input: message.input, emit }).catch((error) => {
-        emit({ type: EventType.Log, level: 'error', message: String(error) });
-      });
+    for (const client of wss.clients) {
+      if (client.readyState === client.OPEN) {
+        client.send(data);
+      }
     }
   });
-});
 
-server.listen(PORT, () => {
-  console.log(`harness server listening on http://localhost:${PORT}  (ws: /ws)`);
+  wss.on('connection', async (socket: WebSocket) => {
+    socket.on('message', async (raw) => {
+      let clientMessage: ClientMessage;
+      try {
+        clientMessage = JSON.parse(raw.toString());
+      } catch {
+        return; // ignore anything that isn't valid JSON
+      }
+
+      if (clientMessage.type === 'submit_task') {
+        await DBOS.startWorkflow(runAgentWorkflow)({ input: clientMessage.input });
+      }
+    });
+
+    for (const event of await history()) {
+      socket.send(JSON.stringify(event));
+    }
+  });
+
+  server.listen(PORT, () => {
+    console.log(`harness server listening on http://localhost:${PORT}  (ws: /ws)`);
+  });
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });

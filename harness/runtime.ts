@@ -1,17 +1,74 @@
-import { streamText, type ModelMessage } from 'ai';
-import { randomUUID } from 'node:crypto';
-import { EventType, type Emit } from '@shared/events';
+import { DBOS } from '@dbos-inc/dbos-sdk';
+import { type JSONValue, type ModelMessage, streamText } from 'ai';
+import { EventType } from '@shared/events';
 import { SYSTEM_PROMPT } from './system-prompt';
 import { model } from './model';
-import { tools } from './tools';
+import { runTool, tools } from './tools';
+import type { ToolCall, Turn } from './types';
+import { emit } from './bus';
 
 const MAX_STEPS = 10;
 
-export async function runAgent(opts: { input: string; emit: Emit }): Promise<void> {
-  const { input, emit } = opts;
-  const workflowId = randomUUID();
+async function modelTurn(workflowId: string, messages: Array<ModelMessage>): Promise<Turn> {
+  const result = streamText({
+    model,
+    messages,
+    tools,
+  });
 
-  emit({ type: EventType.WorkflowStarted, workflowId, input });
+  for await (const part of result.fullStream) {
+    if (part.type === 'text-delta') {
+      await emit({
+        type: EventType.ModelDelta,
+        text: part.text,
+        workflowId,
+      });
+    }
+  }
+
+  const rowCalls = await result.toolCalls;
+
+  return {
+    text: await result.text,
+    toolCalls: rowCalls.map((call) => ({
+      toolName: call.toolName,
+      input: call.input as Record<string, JSONValue>,
+      toolCallId: call.toolCallId,
+    })),
+    responseMessages: (await result.response).messages,
+  };
+}
+
+async function toolStep(workflowId: string, call: ToolCall): Promise<Record<string, unknown>> {
+  const { toolName, input, toolCallId } = call;
+
+  await emit({
+    type: EventType.ToolRequested,
+    toolCallId,
+    name: toolName,
+    args: input,
+    workflowId,
+  });
+
+  const output = await runTool(toolName, input);
+
+  await emit({
+    type: EventType.ToolCompleted,
+    result: output,
+    toolCallId,
+    workflowId,
+  });
+
+  return output;
+}
+
+export async function agentWorkflow(opts: { input: string }): Promise<string> {
+  const { input } = opts;
+  const workflowId = DBOS.workflowID ?? 'unknown';
+
+  await DBOS.runStep(() => emit({ type: EventType.WorkflowStarted, workflowId, input }), {
+    name: 'started',
+  });
 
   const messages: Array<ModelMessage> = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -19,65 +76,58 @@ export async function runAgent(opts: { input: string; emit: Emit }): Promise<voi
   ];
 
   let step = 0;
-
   while (step < MAX_STEPS) {
-    const result = streamText({
-      model,
-      messages,
-      tools,
+    const turn = await DBOS.runStep(() => modelTurn(workflowId, messages), {
+      name: `model-turn-${step}`,
     });
 
-    for await (const part of result.fullStream) {
-      switch (part.type) {
-        case 'text-delta':
-          emit({
-            type: EventType.ModelDelta,
-            text: part.text,
-            workflowId,
-          });
-          break;
-        case 'tool-call':
-          emit({
-            type: EventType.ToolRequested,
-            toolCallId: part.toolCallId,
-            name: part.toolName,
-            args: part.input,
-            workflowId,
-          });
-          break;
-        case 'tool-result':
-          emit({
-            type: EventType.ToolCompleted,
-            toolCallId: part.toolCallId,
-            result: part.output,
-            workflowId,
-          });
-          break;
-        case 'error':
-          emit({
-            type: EventType.WorkflowFailed,
-            error: String(part.error),
-            workflowId,
-          });
-          break;
-      }
+    messages.push(...turn.responseMessages);
+
+    if (turn.toolCalls.length === 0) {
+      await DBOS.runStep(
+        () => emit({ type: EventType.ModelCompleted, workflowId, text: turn.text }),
+        { name: `model-done-step-${step}` },
+      );
+
+      await DBOS.runStep(
+        () => emit({ type: EventType.WorkflowCompleted, workflowId, output: turn.text }),
+        { name: `workflow-completed-step-${step}` },
+      );
+
+      return turn.text;
     }
 
-    messages.push(...(await result.response).messages);
+    for (const call of turn.toolCalls) {
+      const output = await DBOS.runStep(() => toolStep(workflowId, call), {
+        name: `tool-${call.toolCallId}`,
+      });
 
-    const toolCalls = await result.toolCalls;
-
-    if (toolCalls.length === 0) {
-      const text = await result.text;
-
-      emit({ type: EventType.ModelCompleted, workflowId, text });
-      emit({ type: EventType.WorkflowCompleted, workflowId, output: text });
-
-      return;
+      messages.push({
+        role: 'tool',
+        content: [
+          {
+            type: 'tool-result',
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            output: { type: 'json', value: output as JSONValue },
+          },
+        ],
+      });
     }
 
     step++;
   }
 
-  emit({ type: EventType.WorkflowFailed, workflowId, error: 'Hit max steps' });
+  await DBOS.runStep(
+    () => emit({ type: EventType.WorkflowFailed, workflowId, error: 'Hit max steps' }),
+    {
+      name: 'workflow-failed',
+    },
+  );
+
+  return '';
 }
+
+export const runAgentWorkflow = DBOS.registerWorkflow(agentWorkflow, {
+  name: 'agent-workflow',
+});
