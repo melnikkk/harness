@@ -1,6 +1,22 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { KNOWLEDGE_BASE } from './knowledge-base';
+import type { SandboxApi } from './types';
+import { CHARGES } from './mocks';
+import {runInSandbox} from "./sandbox";
+
+const searchKB = (query: string) => {
+  const hits = Object.entries(KNOWLEDGE_BASE)
+    .filter(([key]) => query.toLocaleLowerCase().includes(key))
+    .map(([, article]) => article);
+
+  return { articles: hits.length ? hits : ['No relevant articles found.'] };
+};
+
+const sandboxApi: SandboxApi = {
+  getCharges: (customerId: string) => CHARGES[customerId] ?? [],
+  searchKnowledgeBase: async (query: string) => searchKB(query),
+};
 
 export const tools = {
   searchKnowledgeBase: tool({
@@ -33,6 +49,18 @@ export const tools = {
       draftId: z.string(),
     }),
   }),
+
+  runCode: tool({
+    description: [
+      "Run a JavaScript program (an async function body) to fetch and analyze data.",
+      "Available inside the program:",
+      "  • await tools.getCharges(customerId) → [{ id, amount (cents), date, description }]",
+      "  • await tools.searchKnowledgeBase(query) → string[]",
+      "  • console.log(...) for debugging",
+      "Use `return` to return your result (any JSON value).",
+    ].join("\n"),
+    inputSchema: z.object({ code: z.string() }),
+  }),
 };
 
 export async function runTool(
@@ -41,12 +69,7 @@ export async function runTool(
 ): Promise<Record<string, unknown>> {
   switch (name) {
     case 'searchKnowledgeBase': {
-      const query = String(args?.query ?? '');
-      const hits = Object.entries(KNOWLEDGE_BASE)
-        .filter(([key]) => query.toLocaleLowerCase().includes(key))
-        .map(([, article]) => article);
-
-      return { articles: hits.length ? hits : ['No relevant articles found.'] };
+      return { articles: searchKB(String(args.query)) };
     }
     case 'classifyItem': {
       return { ok: true, itemId: args.itemId, category: args.category };
@@ -56,6 +79,12 @@ export async function runTool(
     }
     case 'sendReply': {
       return { ok: true, itemId: args.itemId, draftId: args.draftId };
+    }
+    case 'runCode': {
+      return runInSandbox(String(args?.code ?? ''), sandboxApi);
+    }
+    case 'getCharges': {
+      return { charges: CHARGES[String(args.customerId)] ?? [] };
     }
     default: {
       throw new Error(`Unknown tool: ${name}`);
