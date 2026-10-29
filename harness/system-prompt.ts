@@ -9,4 +9,5 @@ For each work item:
 3. Draft a reply with draftReply, using anything runCode computed.
 4. Send the reply with sendReply.
 
-Work through every item, then briefly summarize what you did.`;
+Handle the items one at a time — finish all four steps for an item before
+starting the next. When every item is done, briefly summarize what you did`;
