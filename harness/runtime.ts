@@ -1,11 +1,17 @@
 import { DBOS } from '@dbos-inc/dbos-sdk';
 import { type JSONValue, type ModelMessage, streamText } from 'ai';
 import { EventType } from '@shared/events';
-import { SYSTEM_PROMPT } from './system-prompt';
 import { model } from './model';
 import { runTool, tools } from './tools';
 import type { ToolCall, Turn } from './types';
 import { emit } from './bus';
+import {
+  buildContext,
+  estimateTokens,
+  KEEP_CONTEXT_TOKENS,
+  MAX_CONTEXT_TOKENS,
+  summarize,
+} from './memory';
 
 const MAX_STEPS = 10;
 
@@ -70,18 +76,52 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
     name: 'started',
   });
 
-  const messages: Array<ModelMessage> = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: input },
-  ];
+  let turns: Array<Array<ModelMessage>> = [];
+  let summary = '';
 
   let step = 0;
   while (step < MAX_STEPS) {
-    const turn = await DBOS.runStep(() => modelTurn(workflowId, messages), {
+    const estimatedTokens = estimateTokens(turns.flat());
+
+    if (estimatedTokens > MAX_CONTEXT_TOKENS) {
+      const oldTurns: Array<Array<ModelMessage>> = [];
+
+      while (turns.length > 1 && estimateTokens(turns.flat()) > KEEP_CONTEXT_TOKENS) {
+        const oldestTurn = turns.shift();
+
+        if (oldestTurn) {
+          oldTurns.push(oldestTurn);
+        }
+      }
+
+      if (oldTurns.length > 0) {
+        summary = await DBOS.runStep(() => summarize(oldTurns, summary), {
+          name: `summarize-step-${step}`,
+        });
+
+        const contextTokens = estimateTokens(buildContext(input, summary, turns));
+
+        await DBOS.runStep(
+          () =>
+            emit({
+              type: EventType.MemoryCompacted,
+              workflowId,
+              summarizedTurns: oldTurns.length,
+              contextTokens,
+              summary,
+            }),
+          { name: `context-compacted-step-${step}` },
+        );
+      }
+    }
+
+    const context = buildContext(input, summary, turns);
+
+    const turn = await DBOS.runStep(() => modelTurn(workflowId, context), {
       name: `model-turn-${step}`,
     });
 
-    messages.push(...turn.responseMessages);
+    const turnMessages: Array<ModelMessage> = [...turn.responseMessages];
 
     if (turn.toolCalls.length === 0) {
       await DBOS.runStep(
@@ -102,7 +142,7 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
         name: `tool-${call.toolCallId}`,
       });
 
-      messages.push({
+      turnMessages.push({
         role: 'tool',
         content: [
           {
@@ -114,6 +154,8 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
         ],
       });
     }
+
+    turns.push(turnMessages);
 
     step++;
   }

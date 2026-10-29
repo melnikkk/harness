@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { KNOWLEDGE_BASE } from './knowledge-base';
 import type { SandboxApi } from './types';
 import { CHARGES } from './mocks';
-import {runInSandbox} from "./sandbox";
+import { runInSandbox } from './sandbox';
 
 const searchKB = (query: string) => {
   const hits = Object.entries(KNOWLEDGE_BASE)
@@ -52,13 +52,13 @@ export const tools = {
 
   runCode: tool({
     description: [
-      "Run a JavaScript program (an async function body) to fetch and analyze data.",
-      "Available inside the program:",
-      "  • await tools.getCharges(customerId) → [{ id, amount (cents), date, description }]",
-      "  • await tools.searchKnowledgeBase(query) → string[]",
-      "  • console.log(...) for debugging",
-      "Use `return` to return your result (any JSON value).",
-    ].join("\n"),
+      'Run a JavaScript program (an async function body) to fetch and analyze data.',
+      'Available inside the program:',
+      '  • await tools.getCharges(customerId) → [{ id, amount (cents), date, description }]',
+      '  • await tools.searchKnowledgeBase(query) → string[]',
+      '  • console.log(...) for debugging',
+      'Use `return` to return your result (any JSON value).',
+    ].join('\n'),
     inputSchema: z.object({ code: z.string() }),
   }),
 };

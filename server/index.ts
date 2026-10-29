@@ -6,7 +6,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import { type ClientMessage } from '@shared/events';
 import { subscribe, history } from '../harness/bus';
 import { runAgentWorkflow } from '../harness/runtime';
-import { ensureSchema } from '../harness/db';
+import { ensureSchema, clearEventLog } from '../harness/db';
 
 const PORT = Number(process.env.PORT ?? 8787);
 
@@ -21,6 +21,18 @@ async function main() {
 
   const app = express();
   app.get('/health', (_req, res) => {
+    res.json({ ok: true });
+  });
+
+  app.use((_req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    next();
+  });
+
+  app.post('/api/clear', async (_req, res) => {
+    await clearEventLog();
+
     res.json({ ok: true });
   });
 
