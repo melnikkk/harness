@@ -11,3 +11,9 @@ export type Turn = {
   toolCalls: Array<ToolCall>;
   responseMessages: Array<ModelMessage>;
 };
+
+export type SandboxResult =
+  | { ok: true; result: unknown; logs: Array<string> }
+  | { ok: false; error: string; logs: Array<string> };
+
+export type SandboxApi = Record<string, (...args: Array<any>) => unknown>;
