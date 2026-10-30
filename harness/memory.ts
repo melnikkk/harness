@@ -1,6 +1,5 @@
 // TODO: use real model tokenization instead of estimating based on character count (tiktoken - https://github.com/openai/tiktoken)
 import { generateText, type ModelMessage } from 'ai';
-import { SYSTEM_PROMPT } from './system-prompt';
 import { model } from './model';
 
 const EXPECTED_TOKEN_LENGTH = 4;
@@ -22,12 +21,13 @@ export function estimateTokens(messages: Array<ModelMessage>): number {
 }
 
 export function buildContext(
+  systemPrompt: string,
   task: string,
   summary: string,
   turns: Array<Array<ModelMessage>>,
 ): Array<ModelMessage> {
   const contextBaseLine: Array<ModelMessage> = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: task },
   ];
 

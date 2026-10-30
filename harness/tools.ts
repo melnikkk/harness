@@ -4,6 +4,7 @@ import { KNOWLEDGE_BASE } from './knowledge-base';
 import type { SandboxApi } from './types';
 import { CHARGES } from './mocks';
 import { runInSandbox } from './sandbox';
+import { AGENT_NAMES } from './agent-names';
 
 const searchKB = (query: string) => {
   const hits = Object.entries(KNOWLEDGE_BASE)
@@ -61,6 +62,21 @@ export const tools = {
     ].join('\n'),
     inputSchema: z.object({ code: z.string() }),
   }),
+
+  issueRefund: tool({
+    description: 'Issue a refund to the customer. IRREVERSIBLE — this moves real money.',
+    inputSchema: z.object({
+      customerId: z.string(),
+      chargeId: z.string(),
+      amountCents: z.number(),
+    }),
+  }),
+
+  handoff: tool({
+    description:
+      "Hand off the conversation to a specialist agent when the task needs a capability you don't have (e.g. issuing a refund → billing).",
+    inputSchema: z.object({ to: z.enum(Object.values<string>(AGENT_NAMES)), reason: z.string() }),
+  }),
 };
 
 export async function runTool(
@@ -85,6 +101,14 @@ export async function runTool(
     }
     case 'getCharges': {
       return { charges: CHARGES[String(args.customerId)] ?? [] };
+    }
+    case 'issueRefund': {
+      return {
+        ok: true,
+        customerId: args.customerId,
+        chargeId: args.chargeId,
+        amountCents: args.amountCents,
+      };
     }
     default: {
       throw new Error(`Unknown tool: ${name}`);
