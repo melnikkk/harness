@@ -6,7 +6,7 @@ import { CHARGES } from './mocks';
 import { runInSandbox } from './sandbox';
 import { AGENT_NAMES } from './agent-names';
 
-const searchKB = (query: string) => {
+export const searchKB = (query: string) => {
   const hits = Object.entries(KNOWLEDGE_BASE)
     .filter(([key]) => query.toLocaleLowerCase().includes(key))
     .map(([, article]) => article);
