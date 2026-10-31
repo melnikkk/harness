@@ -21,18 +21,34 @@ async function main() {
   await DBOS.launch();
 
   const app = express();
-  app.get('/health', (_req, res) => {
-    res.json({ ok: true });
-  });
 
-  app.use((_req, res, next) => {
+  app.use(express.json());
+  app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
 
     next();
   });
 
+  app.get('/health', (_req, res) => {
+    res.json({ ok: true });
+  });
+
   app.post('/api/clear', async (_req, res) => {
     await clearEventLog();
+
+    res.json({ ok: true });
+  });
+
+  app.post('/api/approve/:workflowId', async (req, res) => {
+    const approved = Boolean(req.body?.approved);
+
+    await DBOS.send(req.params.workflowId, { approved }, 'approval');
 
     res.json({ ok: true });
   });
