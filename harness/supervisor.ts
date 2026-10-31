@@ -24,7 +24,7 @@ async function makePlan(prompt: string): Promise<Plan> {
     prompt,
     schema: PlanSchema,
     system:
-      "Decompose a customer escalation into independent sub-tasks — one per area the message actually raises (billing / technical / sales). Only include relevant areas.",
+      'Decompose a customer escalation into independent sub-tasks — one per area the message actually raises (billing / technical / sales). Only include relevant areas.',
   });
 
   return object;

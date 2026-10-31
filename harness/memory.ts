@@ -4,8 +4,8 @@ import { model } from './model';
 
 const EXPECTED_TOKEN_LENGTH = 4;
 
-export const MAX_CONTEXT_TOKENS = 500;
-export const KEEP_CONTEXT_TOKENS = 200;
+export const MAX_CONTEXT_TOKENS = 3000;
+export const KEEP_CONTEXT_TOKENS = 1500;
 
 export function estimateTokens(messages: Array<ModelMessage>): number {
   const characters = messages.reduce(

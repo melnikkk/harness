@@ -16,6 +16,8 @@ import { agents, triageAgent } from './agent';
 import type { AgentName } from './agent-names';
 
 const MAX_STEPS = 10;
+const NEEDS_APPROVAL = new Set(['issueRefund']);
+const APPROVAL_TIMEOUT_IN_S = 86400;
 
 async function modelTurn(
   workflowId: string,
@@ -180,8 +182,38 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
             { name: `agent-handoff-step-${step}` },
           );
 
-          currentAgent = agents[to];
+          currentAgent = agents[to] ?? currentAgent;
           turnMessages.push(toolResultMessage(call, { ok: true, handedOffTo: to, reason }));
+        }
+      } else if (NEEDS_APPROVAL.has(call.toolName)) {
+        await DBOS.runStep(
+          () =>
+            emit({
+              workflowId,
+              toolCallId,
+              type: EventType.ApprovalRequested,
+              action: toolName,
+              args: input,
+            }),
+          { name: `approval-requested-step-${step}` },
+        );
+
+        const decision = await DBOS.recv<{ approved: boolean }>('approval', APPROVAL_TIMEOUT_IN_S);
+        const approved = decision?.approved ?? false;
+
+        await DBOS.runStep(
+          () => emit({ type: EventType.ApprovalResolved, workflowId, toolCallId, approved }),
+          { name: `approval-decision-step-${step}` },
+        );
+
+        if (approved) {
+          const output = await DBOS.runStep(() => toolStep(workflowId, call), {
+            name: `tool-${call.toolCallId}`,
+          });
+
+          turnMessages.push(toolResultMessage(call, output as JSONValue));
+        } else {
+          turnMessages.push(toolResultMessage(call, { approved: false, reason: 'not approved' }));
         }
       } else {
         const output = await DBOS.runStep(() => toolStep(workflowId, call), {
