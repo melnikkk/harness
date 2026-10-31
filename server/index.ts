@@ -7,6 +7,7 @@ import { type ClientMessage } from '@shared/events';
 import { subscribe, history } from '../harness/bus';
 import { runAgentWorkflow } from '../harness/runtime';
 import { ensureSchema, clearEventLog } from '../harness/db';
+import { runSupervisorWorkflow } from '../harness/supervisor';
 
 const PORT = Number(process.env.PORT ?? 8787);
 
@@ -59,7 +60,10 @@ async function main() {
       }
 
       if (clientMessage.type === 'submit_task') {
-        await DBOS.startWorkflow(runAgentWorkflow)({ input: clientMessage.input });
+        const workflow =
+          clientMessage.mode === 'supervised' ? runSupervisorWorkflow : runAgentWorkflow;
+
+        await DBOS.startWorkflow(workflow)({ input: clientMessage.input });
       }
     });
 
