@@ -6,10 +6,18 @@ export type ToolCall = {
   toolCallId: string;
 };
 
+export type ModelContext = {
+  system: string;
+  messages: Array<ModelMessage>;
+};
+
 export type Turn = {
   text: string;
   toolCalls: Array<ToolCall>;
   responseMessages: Array<ModelMessage>;
+  usage: {
+    inputTokens?: number;
+  };
 };
 
 export type SandboxResult =

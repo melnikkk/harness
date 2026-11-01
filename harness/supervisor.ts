@@ -122,5 +122,5 @@ async function supervisorWorkflow({ input: task }: { input: string }): Promise<s
 }
 
 export const runSupervisorWorkflow = DBOS.registerWorkflow(supervisorWorkflow, {
-  name: 'supervisorWorkflow',
+  name: 'supervisor-workflow',
 });
