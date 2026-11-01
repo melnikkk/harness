@@ -3,10 +3,11 @@ import { type JSONValue, type ModelMessage, streamText, type ToolSet } from 'ai'
 import { EventType } from '@shared/events';
 import { model } from './model';
 import { handoffInputSchema, runTool } from './tools';
-import type { ToolCall, Turn } from './types';
+import type { ModelContext, ToolCall, Turn } from './types';
 import { emit } from './bus';
 import {
   buildContext,
+  estimateContextTokens,
   estimateTokens,
   KEEP_CONTEXT_TOKENS,
   MAX_CONTEXT_TOKENS,
@@ -20,12 +21,13 @@ const APPROVAL_TIMEOUT_IN_S = 86400;
 
 async function modelTurn(
   workflowId: string,
-  messages: Array<ModelMessage>,
+  context: ModelContext,
   agentTools: ToolSet,
 ): Promise<Turn> {
   const result = streamText({
     model,
-    messages,
+    system: context.system,
+    messages: context.messages,
     tools: agentTools,
   });
 
@@ -40,6 +42,7 @@ async function modelTurn(
   }
 
   const rowCalls = await result.toolCalls;
+  const usage = await result.usage;
 
   return {
     text: await result.text,
@@ -49,6 +52,9 @@ async function modelTurn(
       toolCallId: call.toolCallId,
     })),
     responseMessages: (await result.response).messages,
+    usage: {
+      inputTokens: usage.inputTokens,
+    },
   };
 }
 
@@ -102,15 +108,24 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
   const turns: Array<Array<ModelMessage>> = [];
   let summary = '';
   let currentAgent = triageAgent;
+  let previousStepInputTokens: number | undefined;
+  let estimateOffset = 0;
+
+  const estimateFullContext = (): number =>
+    estimateOffset +
+    estimateContextTokens(buildContext(currentAgent.systemPrompt, input, summary, turns));
 
   let step = 0;
   while (step < MAX_STEPS) {
-    const estimatedTokens = estimateTokens(turns.flat());
+    const predictedInputTokens =
+      previousStepInputTokens !== undefined
+        ? previousStepInputTokens + estimateTokens(turns.at(-1) ?? [])
+        : estimateTokens(turns.flat());
 
-    if (estimatedTokens > MAX_CONTEXT_TOKENS) {
+    if (predictedInputTokens > MAX_CONTEXT_TOKENS) {
       const oldTurns: Array<Array<ModelMessage>> = [];
 
-      while (turns.length > 1 && estimateTokens(turns.flat()) > KEEP_CONTEXT_TOKENS) {
+      while (turns.length > 1 && estimateFullContext() > KEEP_CONTEXT_TOKENS) {
         const oldestTurn = turns.shift();
 
         if (oldestTurn) {
@@ -123,9 +138,7 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
           name: `summarize-step-${step}`,
         });
 
-        const contextTokens = estimateTokens(
-          buildContext(currentAgent.systemPrompt, input, summary, turns),
-        );
+        const contextTokens = estimateFullContext();
 
         await DBOS.runStep(
           () =>
@@ -146,6 +159,12 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
     const turn = await DBOS.runStep(() => modelTurn(workflowId, context, currentAgent.tools), {
       name: `model-turn-${step}`,
     });
+
+    previousStepInputTokens = turn.usage.inputTokens ?? previousStepInputTokens;
+
+    if (turn.usage.inputTokens !== undefined) {
+      estimateOffset = turn.usage.inputTokens - estimateContextTokens(context);
+    }
 
     const turnMessages: Array<ModelMessage> = [...turn.responseMessages];
 
