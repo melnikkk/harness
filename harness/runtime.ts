@@ -2,7 +2,7 @@ import { DBOS } from '@dbos-inc/dbos-sdk';
 import { type JSONValue, type ModelMessage, streamText, type ToolSet } from 'ai';
 import { EventType } from '@shared/events';
 import { model } from './model';
-import { runTool } from './tools';
+import { handoffInputSchema, runTool } from './tools';
 import type { ToolCall, Turn } from './types';
 import { emit } from './bus';
 import {
@@ -13,7 +13,6 @@ import {
   summarize,
 } from './memory';
 import { agents, triageAgent } from './agent';
-import type { AgentName } from './agent-names';
 
 const MAX_STEPS = 10;
 const NEEDS_APPROVAL = new Set(['issueRefund']);
@@ -46,7 +45,7 @@ async function modelTurn(
     text: await result.text,
     toolCalls: rowCalls.map((call) => ({
       toolName: call.toolName,
-      input: call.input as Record<string, JSONValue>,
+      input: call.input,
       toolCallId: call.toolCallId,
     })),
     responseMessages: (await result.response).messages,
@@ -168,13 +167,10 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
       const { toolName, toolCallId } = call;
 
       if (toolName === 'handoff') {
-        const toAgent = String(call.input.to ?? '');
+        const parsed = handoffInputSchema.safeParse(call.input);
 
-        if (toAgent) {
-          // TODO: improve type safety
-          const to = toAgent as AgentName;
-
-          const reason = String(call.input.reason ?? '');
+        if (parsed.success) {
+          const { to, reason } = parsed.data;
           const from = currentAgent.name;
 
           await DBOS.runStep(
@@ -182,7 +178,7 @@ export async function agentWorkflow(opts: { input: string }): Promise<string> {
             { name: `agent-handoff-step-${step}` },
           );
 
-          currentAgent = agents[to] ?? currentAgent;
+          currentAgent = agents[to];
           turnMessages.push(toolResultMessage(call, { ok: true, handedOffTo: to, reason }));
         }
       } else if (NEEDS_APPROVAL.has(call.toolName)) {

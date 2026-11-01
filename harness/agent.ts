@@ -1,5 +1,5 @@
 import type { ToolSet } from 'ai';
-import { AGENT_NAMES, type AgentName } from './agent-names';
+import { AGENT_NAMES, type AgentName } from '@shared/agent-names';
 import { tools } from './tools';
 
 export type Agent = {

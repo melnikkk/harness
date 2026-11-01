@@ -1,3 +1,5 @@
+import type { AgentName } from './agent-names';
+
 export enum EventType {
   // a workflow (one agent run) begins / ends
   WorkflowStarted = 'workflow.started',
@@ -48,7 +50,13 @@ export type EventInput =
       contextTokens: number;
       summary: string;
     }
-  | { type: EventType.AgentHandoff; workflowId: string; from: string; to: string; reason: string }
+  | {
+      type: EventType.AgentHandoff;
+      workflowId: string;
+      from: string;
+      to: AgentName;
+      reason: string;
+    }
   | {
       type: EventType.PlanCreated;
       workflowId: string;

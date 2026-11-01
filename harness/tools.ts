@@ -4,7 +4,7 @@ import { KNOWLEDGE_BASE } from './knowledge-base';
 import type { SandboxApi } from './types';
 import { CHARGES } from './mocks';
 import { runInSandbox } from './sandbox';
-import { AGENT_NAMES } from './agent-names';
+import { AGENT_NAMES } from '@shared/agent-names';
 
 export const searchKB = (query: string) => {
   const hits = Object.entries(KNOWLEDGE_BASE)
@@ -18,6 +18,8 @@ const sandboxApi: SandboxApi = {
   getCharges: (customerId: string) => CHARGES[customerId] ?? [],
   searchKnowledgeBase: async (query: string) => searchKB(query),
 };
+
+export const handoffInputSchema = z.object({ to: z.enum(AGENT_NAMES), reason: z.string() });
 
 export const tools = {
   searchKnowledgeBase: tool({
@@ -75,7 +77,7 @@ export const tools = {
   handoff: tool({
     description:
       "Hand off the conversation to a specialist agent when the task needs a capability you don't have (e.g. issuing a refund → billing).",
-    inputSchema: z.object({ to: z.enum(Object.values<string>(AGENT_NAMES)), reason: z.string() }),
+    inputSchema: handoffInputSchema,
   }),
 };
 
