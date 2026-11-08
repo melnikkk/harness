@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
-import { CheckCircle, ChevronDown, Loader2, Settings, XCircle } from 'lucide-react';
+import { CheckCircle, ChevronDown, LoaderCircle, Settings, XCircle } from 'lucide-react';
 import { useState } from 'react';
 
 export type ToolPart = {
@@ -27,7 +27,7 @@ const Tool = ({ toolPart, defaultOpen = false, className }: ToolProps) => {
   const getStateIcon = () => {
     switch (state) {
       case 'input-streaming':
-        return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+        return <LoaderCircle className="h-4 w-4 animate-spin text-blue-500" />;
       case 'input-available':
         return <Settings className="h-4 w-4 text-orange-500" />;
       case 'output-available':

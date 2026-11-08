@@ -43,7 +43,7 @@ function ConnectionStatusComponent({ connectionStatus }: { connectionStatus: Con
 }
 
 export function App() {
-  const { events, connectionStatus, send, resetEvents } = useHarnessSSE();
+  const { events, connectionStatus, resetEvents } = useHarnessSSE();
   const { theme, toggle } = useTheme();
 
   return (
@@ -67,7 +67,7 @@ export function App() {
           </div>
         </header>
         <main className="grid min-h-0 flex-1 grid-cols-2">
-          <TaskPane events={events} send={send} resetEvents={resetEvents} />
+          <TaskPane events={events} resetEvents={resetEvents} />
           <InspectorPane events={events} />
         </main>
       </div>
