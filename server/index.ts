@@ -111,7 +111,12 @@ async function main() {
   });
 
   app.post('/api/approve/:workflowId', async (req, res) => {
-    const approved = Boolean(req.body?.approved);
+    const approved = req.body?.approved;
+
+    if (typeof approved !== 'boolean') {
+      res.status(400).json({ error: 'approved must be a boolean' });
+      return;
+    }
 
     await DBOS.send(req.params.workflowId, { approved }, 'approval');
 

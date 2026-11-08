@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { EventType, type AgentEvent, type SubmitTaskRequest } from '@shared/events';
+import { EventType, type AgentEvent } from '@shared/events';
+import { useApprove, useClearEventLog, useSubmitTask } from '@/api/mutations';
 import { ChatContainerContent, ChatContainerRoot } from '@/components/ui/chat-container';
 import { Markdown } from '@/components/ui/markdown';
 import { Tool, type ToolPart } from '@/components/ui/tool';
@@ -24,7 +25,7 @@ import {
   CircleCheck,
   CircleX,
   Eraser,
-  Loader2,
+  LoaderCircle,
   Network,
   ShieldAlert,
 } from 'lucide-react';
@@ -193,45 +194,39 @@ function toTranscript(events: AgentEvent[]): { turns: Turn[]; running: boolean }
 
 export function TaskPane({
   events,
-  send,
   resetEvents,
 }: {
   events: Array<AgentEvent>;
-  send: (message: SubmitTaskRequest) => Promise<void>;
   resetEvents: () => void;
 }) {
   const [input, setInput] = useState('');
   const [supervised, setSupervised] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const submitTask = useSubmitTask();
+  const clearEventLog = useClearEventLog();
 
   const { turns, running } = toTranscript(events);
 
-  async function submit() {
+  const submitting = submitTask.isPending;
+  const error = submitTask.error?.message ?? clearEventLog.error?.message ?? null;
+
+  function submit() {
     const text = input.trim();
 
     if (!text || submitting) {
       return;
     }
 
-    setError(null);
-    setSubmitting(true);
-
-    try {
-      await send({ input: text, mode: supervised ? 'supervised' : 'default' });
-
-      setInput('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit task');
-    } finally {
-      setSubmitting(false);
-    }
+    clearEventLog.reset();
+    submitTask.mutate(
+      { input: text, mode: supervised ? 'supervised' : 'default' },
+      { onSuccess: () => setInput('') },
+    );
   }
 
-  async function clearMemory() {
-    await fetch(`http://${location.hostname}:8787/api/clear`, { method: 'POST' }).catch(() => {});
-
-    resetEvents();
+  function clearMemory() {
+    submitTask.reset();
+    clearEventLog.mutate(undefined, { onSuccess: resetEvents });
   }
 
   return (
@@ -243,8 +238,14 @@ export function TaskPane({
           size="sm"
           className="text-muted-foreground h-7 gap-1.5 text-xs"
           onClick={clearMemory}
+          disabled={clearEventLog.isPending}
         >
-          <Eraser className="size-3.5" /> Clear
+          {clearEventLog.isPending ? (
+            <LoaderCircle className="size-3.5 animate-spin" />
+          ) : (
+            <Eraser className="size-3.5" />
+          )}{' '}
+          Clear
         </Button>
       </div>
 
@@ -274,7 +275,7 @@ export function TaskPane({
           value={input}
           onValueChange={(value) => {
             setInput(value);
-            setError(null);
+            submitTask.reset();
           }}
           onSubmit={submit}
           isLoading={running || submitting}
@@ -300,7 +301,11 @@ export function TaskPane({
                 onClick={submit}
                 disabled={!input.trim() || submitting}
               >
-                <ArrowUp className="size-4" />
+                {submitting ? (
+                  <LoaderCircle className="size-4 animate-spin" />
+                ) : (
+                  <ArrowUp className="size-4" />
+                )}
               </Button>
             </PromptInputAction>
           </PromptInputActions>
@@ -313,13 +318,13 @@ export function TaskPane({
 const PROSE = 'prose prose-sm dark:prose-invert max-w-none';
 
 function ApprovalCard({ turn }: { turn: Extract<Turn, { role: 'approval' }> }) {
+  const approve = useApprove();
+
   function decide(approved: boolean) {
-    fetch(`http://${location.hostname}:8787/api/approve/${turn.workflowId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approved }),
-    }).catch(() => {});
+    approve.mutate({ workflowId: turn.workflowId, approved });
   }
+
+  const decisionLocked = approve.isPending || approve.isSuccess;
 
   const args = turn.args as Record<string, unknown> | null;
   const summary =
@@ -334,12 +339,28 @@ function ApprovalCard({ turn }: { turn: Extract<Turn, { role: 'approval' }> }) {
         <span className="text-muted-foreground font-mono text-xs">{turn.action}</span>
       </div>
       <p className="text-muted-foreground mb-3 text-sm">{summary}</p>
+      {approve.error && (
+        <p role="alert" className="text-destructive mb-2 text-xs">
+          {approve.error.message}
+        </p>
+      )}
       {turn.state === 'pending' ? (
-        <div className="flex gap-2">
-          <Button size="sm" onClick={() => decide(true)}>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => decide(true)} disabled={decisionLocked}>
+            {approve.isPending && approve.variables?.approved === true && (
+              <LoaderCircle className="size-3.5 animate-spin" />
+            )}
             Approve
           </Button>
-          <Button size="sm" variant="outline" onClick={() => decide(false)}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => decide(false)}
+            disabled={decisionLocked}
+          >
+            {approve.isPending && approve.variables?.approved === false && (
+              <LoaderCircle className="size-3.5 animate-spin" />
+            )}
             Reject
           </Button>
         </div>
@@ -362,7 +383,7 @@ function subagentIcon(state: SubagentState) {
     case 'pending':
       return <Circle className="text-muted-foreground/40 size-4" />;
     case 'started':
-      return <Loader2 className="size-4 animate-spin text-sky-500" />;
+      return <LoaderCircle className="size-4 animate-spin text-sky-500" />;
     case 'completed':
       return <CircleCheck className="size-4 text-emerald-500" />;
     case 'failed':
