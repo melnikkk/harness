@@ -96,13 +96,9 @@ export type EventInput =
 // The harness stamps every event with an id + timestamp when it emits.
 export type AgentEvent = EventInput & { id: string; ts: number };
 
-// What harness code calls to push an event onto the stream.
-export type Emit = (event: EventInput) => void;
+type TaskMode = 'default' | 'supervised';
 
-// Messages the browser sends back to the server (over the same socket).
-// `mode` picks the runtime: the single-agent loop (default) or the supervisor.
-export type ClientMessage = {
-  type: 'submit_task';
+export type SubmitTaskRequest = {
   input: string;
-  mode?: 'default' | 'supervised';
+  mode?: TaskMode;
 };

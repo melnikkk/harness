@@ -1,15 +1,20 @@
 import './env';
-import express from 'express';
-import { createServer } from 'node:http';
-import { WebSocketServer, type WebSocket } from 'ws';
+import express, { type Response, type NextFunction, type Request } from 'express';
 import { DBOS } from '@dbos-inc/dbos-sdk';
-import { type ClientMessage } from '@shared/events';
-import { subscribe, history } from '../harness/bus';
+import type { Entry } from '../harness/types';
+import { subscribe } from '../harness/bus';
 import { runAgentWorkflow } from '../harness/runtime';
-import { ensureSchema, clearEventLog } from '../harness/db';
+import { ensureSchema, clearEventLog, getEventsAfter } from '../harness/db';
 import { runSupervisorWorkflow } from '../harness/supervisor';
+import type { HttpError } from './types';
 
 const PORT = Number(process.env.PORT ?? 8787);
+
+const HEARTBEAT_INTERVAL_MS = 20_000;
+
+function writeEntry(res: Response, entry: Entry) {
+  res.write(`id: ${entry.seq}\ndata: ${JSON.stringify(entry.data)}\n\n`);
+}
 
 async function main() {
   await ensureSchema();
@@ -39,6 +44,66 @@ async function main() {
     res.json({ ok: true });
   });
 
+  app.get('/api/events', async (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    const heartbeatInterval = setInterval(() => {
+      res.write(': ping\n\n');
+    }, HEARTBEAT_INTERVAL_MS);
+
+    const buffer: Array<Entry> = [];
+    const numberedLastSentHeader = Number(req.header('Last-Event-ID'));
+
+    let replaying = true;
+    let lastSent = Number.isFinite(numberedLastSentHeader) ? numberedLastSentHeader : 0;
+
+    const unsubscribe = subscribe((entry) => {
+      if (replaying) {
+        buffer.push(entry);
+      } else {
+        writeEntry(res, entry);
+      }
+    });
+
+    res.on('close', () => {
+      console.log('connection closed');
+
+      clearInterval(heartbeatInterval);
+
+      unsubscribe();
+    });
+
+    try {
+      const rows = await getEventsAfter(lastSent);
+
+      for (const row of rows) {
+        writeEntry(res, row);
+
+        lastSent = row.seq;
+      }
+    } catch (err) {
+      console.error('Error fetching events after', lastSent, err);
+
+      res.end();
+
+      return;
+    }
+
+    for (const bufferedEntry of buffer) {
+      if (bufferedEntry.seq > lastSent) {
+        writeEntry(res, bufferedEntry);
+
+        lastSent = bufferedEntry.seq;
+      }
+    }
+
+    replaying = false;
+  });
+
   app.post('/api/clear', async (_req, res) => {
     await clearEventLog();
 
@@ -53,43 +118,58 @@ async function main() {
     res.json({ ok: true });
   });
 
-  const server = createServer(app);
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  app.post('/api/tasks', async (req, res) => {
+    if (!req.body) {
+      res.status(400).json({ error: 'Missing request body' });
+      return;
+    }
 
-  subscribe((event) => {
-    const data = JSON.stringify(event);
+    const { input, mode = 'default' } = req.body;
 
-    for (const client of wss.clients) {
-      if (client.readyState === client.OPEN) {
-        client.send(data);
-      }
+    if (!['supervised', 'default'].includes(mode)) {
+      res.status(400).json({ error: 'Invalid mode' });
+      return;
+    }
+
+    if (typeof input !== 'string' || input.trim() === '') {
+      res.status(400).json({ error: 'Input must be a non-empty string' });
+      return;
+    }
+
+    const workflow = mode === 'supervised' ? runSupervisorWorkflow : runAgentWorkflow;
+
+    try {
+      const { workflowID } = await DBOS.startWorkflow(workflow)({ input: input.trim() });
+
+      res.status(202).json({ workflowID });
+    } catch (err) {
+      console.error('Error starting workflow', err);
+
+      res.status(500).json({ error: 'Internal Server Error' });
     }
   });
 
-  wss.on('connection', async (socket: WebSocket) => {
-    socket.on('message', async (raw) => {
-      let clientMessage: ClientMessage;
-      try {
-        clientMessage = JSON.parse(raw.toString());
-      } catch {
-        return; // ignore anything that isn't valid JSON
-      }
-
-      if (clientMessage.type === 'submit_task') {
-        const workflow =
-          clientMessage.mode === 'supervised' ? runSupervisorWorkflow : runAgentWorkflow;
-
-        await DBOS.startWorkflow(workflow)({ input: clientMessage.input });
-      }
-    });
-
-    for (const event of await history()) {
-      socket.send(JSON.stringify(event));
+  app.use((err: HttpError, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) {
+      return next(err);
     }
+
+    if (err.type === 'entity.parse.failed') {
+      res.status(400).json({ error: 'Malformed JSON body' });
+      return;
+    }
+
+    const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 500;
+
+    if (status === 500) {
+      console.error('Unhandled error', err);
+    }
+
+    res.status(status).json({ error: status === 500 ? 'Internal Server Error' : err.message });
   });
 
-  server.listen(PORT, () => {
-    console.log(`harness server listening on http://localhost:${PORT}  (ws: /ws)`);
+  app.listen(PORT, () => {
+    console.log(`harness server listening on http://localhost:${PORT}`);
   });
 }
 

@@ -2,6 +2,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { pgTable, bigserial, jsonb } from 'drizzle-orm/pg-core';
 import type { AgentEvent } from '@shared/events';
+import { gt } from 'drizzle-orm';
 
 const connectionString = process.env.DBOS_SYSTEM_DATABASE_URL;
 
@@ -29,4 +30,8 @@ export async function ensureSchema(): Promise<void> {
 
 export async function clearEventLog(): Promise<void> {
   await client`TRUNCATE event_log`;
+}
+
+export async function getEventsAfter(seq: number) {
+  return await db.select().from(eventLog).where(gt(eventLog.seq, seq)).orderBy(eventLog.seq);
 }
