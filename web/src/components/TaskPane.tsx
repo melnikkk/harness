@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { EventType, type AgentEvent, type ClientMessage } from '@shared/events';
+import { EventType, type AgentEvent, type SubmitTaskRequest } from '@shared/events';
 import { ChatContainerContent, ChatContainerRoot } from '@/components/ui/chat-container';
 import { Markdown } from '@/components/ui/markdown';
 import { Tool, type ToolPart } from '@/components/ui/tool';
@@ -194,25 +194,44 @@ function toTranscript(events: AgentEvent[]): { turns: Turn[]; running: boolean }
 export function TaskPane({
   events,
   send,
+  resetEvents,
 }: {
-  events: AgentEvent[];
-  send: (message: ClientMessage) => void;
+  events: Array<AgentEvent>;
+  send: (message: SubmitTaskRequest) => Promise<void>;
+  resetEvents: () => void;
 }) {
   const [input, setInput] = useState('');
   const [supervised, setSupervised] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const { turns, running } = toTranscript(events);
 
-  function submit() {
+  async function submit() {
     const text = input.trim();
-    if (!text) return;
-    send({ type: 'submit_task', input: text, mode: supervised ? 'supervised' : 'default' });
-    setInput('');
+
+    if (!text || submitting) {
+      return;
+    }
+
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      await send({ input: text, mode: supervised ? 'supervised' : 'default' });
+
+      setInput('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit task');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function clearMemory() {
-    // The route is wired up in the memory lesson; degrade gracefully before then.
     await fetch(`http://${location.hostname}:8787/api/clear`, { method: 'POST' }).catch(() => {});
-    location.reload(); // simplest reset: reconnect and replay the now-empty log
+
+    resetEvents();
   }
 
   return (
@@ -246,7 +265,20 @@ export function TaskPane({
       </ChatContainerRoot>
 
       <div className="border-t p-3">
-        <PromptInput value={input} onValueChange={setInput} onSubmit={submit} isLoading={running}>
+        {error && (
+          <p role="alert" className="text-destructive px-1 pb-2 text-xs">
+            {error}
+          </p>
+        )}
+        <PromptInput
+          value={input}
+          onValueChange={(value) => {
+            setInput(value);
+            setError(null);
+          }}
+          onSubmit={submit}
+          isLoading={running || submitting}
+        >
           <PromptInputTextarea
             className="dark:bg-transparent"
             placeholder="Give the agent an objective…"
@@ -266,7 +298,7 @@ export function TaskPane({
                 size="icon"
                 className="size-8 rounded-full"
                 onClick={submit}
-                disabled={!input.trim()}
+                disabled={!input.trim() || submitting}
               >
                 <ArrowUp className="size-4" />
               </Button>

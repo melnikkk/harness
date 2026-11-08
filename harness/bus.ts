@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentEvent, EventInput } from '@shared/events';
+import type { Entry } from './types';
 import { db, eventLog } from './db';
 
-type Listener = (event: AgentEvent) => void;
+type Listener = (entry: Entry) => void;
 
 const listeners = new Set<Listener>();
 
@@ -17,15 +18,9 @@ export function subscribe(listener: Listener): () => void {
 export async function emit(input: EventInput): Promise<void> {
   const event: AgentEvent = { ...input, ts: Date.now(), id: randomUUID() };
 
-  await db.insert(eventLog).values({ data: event });
+  const [entry] = await db.insert(eventLog).values({ data: event }).returning();
 
   for (const listener of listeners) {
-    listener(event);
+    listener(entry);
   }
-}
-
-export async function history(): Promise<Array<AgentEvent>> {
-  const rows = await db.select().from(eventLog).orderBy(eventLog.seq);
-
-  return rows.map((row) => row.data);
 }

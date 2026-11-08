@@ -2,13 +2,48 @@ import { Moon, Sun } from 'lucide-react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useHarnessSocket } from './useHarnessSocket';
+import { useHarnessSSE, ConnectionStatus } from './useHarnessSSE';
 import { useTheme } from './useTheme';
 import { TaskPane } from './components/TaskPane';
 import { InspectorPane } from './components/InspectorPane';
 
+function ConnectionStatusComponent({ connectionStatus }: { connectionStatus: ConnectionStatus }) {
+  const getConnectionStatusLabel = () => {
+    switch (connectionStatus) {
+      case ConnectionStatus.CONNECTED:
+        return 'connected';
+      case ConnectionStatus.RECONNECTING:
+        return 'reconnecting';
+      case ConnectionStatus.DISCONNECTED:
+      default:
+        return 'disconnected';
+    }
+  };
+
+  const getConnectionStatusColor = () => {
+    switch (connectionStatus) {
+      case ConnectionStatus.CONNECTED:
+        return 'text-emerald-600';
+      case ConnectionStatus.RECONNECTING:
+        return 'text-yellow-600';
+      case ConnectionStatus.DISCONNECTED:
+      default:
+        return 'text-muted-foreground';
+    }
+  };
+
+  return (
+    <>
+      <span className={cn('flex items-center gap-1.5 text-xs', getConnectionStatusColor())}>
+        <span className={cn('size-2 rounded-full', getConnectionStatusColor())} />
+        {getConnectionStatusLabel()}
+      </span>
+    </>
+  );
+}
+
 export function App() {
-  const { events, connected, send } = useHarnessSocket();
+  const { events, connectionStatus, send, resetEvents } = useHarnessSSE();
   const { theme, toggle } = useTheme();
 
   return (
@@ -19,20 +54,7 @@ export function App() {
             Harness<span className="text-muted-foreground"> Inspector</span>
           </span>
           <div className="flex items-center gap-3">
-            <span
-              className={cn(
-                'flex items-center gap-1.5 text-xs',
-                connected ? 'text-emerald-600' : 'text-muted-foreground',
-              )}
-            >
-              <span
-                className={cn(
-                  'size-2 rounded-full',
-                  connected ? 'bg-emerald-500' : 'bg-muted-foreground/50',
-                )}
-              />
-              {connected ? 'connected' : 'disconnected'}
-            </span>
+            <ConnectionStatusComponent connectionStatus={connectionStatus} />
             <Button
               variant="ghost"
               size="icon"
@@ -45,7 +67,7 @@ export function App() {
           </div>
         </header>
         <main className="grid min-h-0 flex-1 grid-cols-2">
-          <TaskPane events={events} send={send} />
+          <TaskPane events={events} send={send} resetEvents={resetEvents} />
           <InspectorPane events={events} />
         </main>
       </div>

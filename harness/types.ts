@@ -1,4 +1,5 @@
 import type { ModelMessage } from 'ai';
+import type { AgentEvent } from '@shared/events';
 
 export type ToolCall = {
   toolName: string;
@@ -25,3 +26,5 @@ export type SandboxResult =
   | { ok: false; error: string; logs: Array<string> };
 
 export type SandboxApi = Record<string, (...args: Array<any>) => unknown>;
+
+export type Entry = { seq: number; data: AgentEvent };
