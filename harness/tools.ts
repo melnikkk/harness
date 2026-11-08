@@ -1,10 +1,10 @@
 import { tool } from 'ai';
 import { z } from 'zod';
-import { KNOWLEDGE_BASE } from './knowledge-base';
+import { KNOWLEDGE_BASE } from './mocks/knowledge-base';
 import type { SandboxApi } from './types';
-import { CHARGES } from './mocks';
 import { runInSandbox } from './sandbox';
 import { AGENT_NAMES } from '@shared/agent-names';
+import {CHARGES} from "./mocks/customers-data";
 
 export const searchKB = (query: string) => {
   const hits = Object.entries(KNOWLEDGE_BASE)

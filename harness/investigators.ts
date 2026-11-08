@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { generateText, stepCountIs, tool } from 'ai';
 import { searchKB } from './tools';
-import { CHARGES } from './mocks';
 import { model } from './model';
+import {CHARGES} from "./mocks/customers-data";
 
 const getCharges = tool({
   description: "Look up a customer's charges.",
